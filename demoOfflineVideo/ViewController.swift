@@ -23,10 +23,10 @@ class ViewController: UIViewController{
     private var playerItemContext = 0
     
     private var currAsset:AVAsset?
-
+    
     private lazy var urlSession: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: "MySession")
-//        config.isDiscretionary = true
+        //        config.isDiscretionary = true
         config.sessionSendsLaunchEvents = true
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
@@ -41,18 +41,24 @@ class ViewController: UIViewController{
     
     override func viewDidLoad() {
         super.viewDidLoad()
-//        downloadVideoLink("http://techslides.com/demos/sample-videos/small.mp4")
-//        setupHlsDownload()
+        //        downloadVideoLink("http://techslides.com/demos/sample-videos/small.mp4")
+        let item = AVPlayerItem(url: URL(string: "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8")!)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            //            self.setUpPlayer(item)
+        }
+        
+        
+        //        setupHlsDownload()
     }
     
     @available(iOS 10.0, *)
     @IBAction func mOnPlayClicked(_ sender: Any) {
-//        mPlayer?.play()
+        //        mPlayer?.play()
         
         guard let assetPath = UserDefaults.standard.value(forKey: "assetPath") as? String else {
-                   // Present Error: No offline version of this asset available
+            // Present Error: No offline version of this asset available
             setupHlsDownload()
-                   return
+            return
         }
         
         
@@ -66,7 +72,7 @@ class ViewController: UIViewController{
             createVtnPlayer(asset)
         }
         
-//        nextMediaSelection(asset)
+        //        nextMediaSelection(asset)
         listDirectory(assetURL)
         
         
@@ -74,25 +80,53 @@ class ViewController: UIViewController{
     
     @IBAction func mOnPauseClicked(_ sender: Any) {
         mPlayer?.pause()
+        
     }
     
-    func playVideo(_ url:URL){
+    
+    @IBAction func mOnDeleteClicked(_ sender: Any) {
+        
+        let userDefaults = UserDefaults.standard
+        
+        if let assetPath = userDefaults.value(forKey: "assetPath") as? String{
+            let baseURL = URL(fileURLWithPath: NSHomeDirectory())
+            let assetURL = baseURL.appendingPathComponent(assetPath)
+            try? FileManager.default.removeItem(at: assetURL)
+            userDefaults.removeObject(forKey: "assetPath")
+        }
+        
+    }
+    
+    
+    @IBAction func mOpenDownload(_ sender: Any) {
+        if let dwUrl = dwUrl{
+            playVideo(dwUrl)
+        }
+        else{
+            print("NIL")
+        }
+    }
+}
 
+extension ViewController{
+    
+    func playVideo(_ url:URL){
+        
         let mPlayerItem = AVPlayerItem(url: url)
         
         mPlayerItem.addObserver(self,forKeyPath: #keyPath(AVPlayerItem.status),options: [.old, .new],context: &playerItemContext)
         
-            self.mPlayer = AVPlayer(playerItem: mPlayerItem)
-     
-//            self.mPlayer?.rate = 0.0
-//            self.mPlayer?.replaceCurrentItem(with: mPlayerItem)
-            
-            let layer: AVPlayerLayer = AVPlayerLayer(player: self.mPlayer)
-            layer.frame = self.mPlayerView.bounds
-            layer.videoGravity = AVLayerVideoGravity.resizeAspectFill
-            self.mPlayerView.layer.addSublayer(layer)
-            self.mPlayer?.play()
-           
+        self.mPlayer = AVPlayer(playerItem: mPlayerItem)
+        
+        //            self.mPlayer?.rate = 0.0
+        //            self.mPlayer?.replaceCurrentItem(with: mPlayerItem)
+        
+        let layer: AVPlayerLayer = AVPlayerLayer(player: self.mPlayer)
+        layer.frame = self.mPlayerView.bounds
+        layer.videoGravity = AVLayerVideoGravity.resizeAspectFill
+        self.mPlayerView.layer.addSublayer(layer)
+        self.mPlayer?.play()
+        
         print("PATH: ", getVideoUrl() as Any)
         
         
@@ -142,61 +176,76 @@ class ViewController: UIViewController{
         
     }
     
-     func startDownload(_ url:URL){
-            
-    //        let urlSession = URLSession(configuration: .default, delegate: self, delegateQueue: OperationQueue())
-           
-            let backgroundTask = urlSession.downloadTask(with: url)
-            backgroundTask.resume()
-        }
-    
-    @IBAction func mOpenDownload(_ sender: Any) {
-        if let dwUrl = dwUrl{
-            playVideo(dwUrl)
-        }
-        else{
-            print("NIL")
-        }
+    func startDownload(_ url:URL){
+        
+        //        let urlSession = URLSession(configuration: .default, delegate: self, delegateQueue: OperationQueue())
+        
+        let backgroundTask = urlSession.downloadTask(with: url)
+        backgroundTask.resume()
     }
+    
 }
-
 
 extension ViewController {
     
     
     @available(iOS 10.0, *)
     func nextMediaSelection(_ asset: AVURLAsset) -> (mediaSelectionGroup: AVMediaSelectionGroup?,
-                                                     mediaSelectionOption: AVMediaSelectionOption?) {
-     
-        // If the specified asset has not associated asset cache, return nil tuple
-        guard let assetCache = asset.assetCache else {
-            return (nil, nil)
-        }
-     
-        // Iterate through audible and legible characteristics to find associated groups for asset
-                                                        for characteristic in [AVMediaCharacteristic.audible, AVMediaCharacteristic.legible] {
-     
-            if let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: characteristic) {
-     
-                // Determine which offline media selection options exist for this asset
-                let savedOptions = assetCache.mediaSelectionOptions(in: mediaSelectionGroup)
-     
-                // If there are still media options to download...
-                if savedOptions.count < mediaSelectionGroup.options.count {
-                    for option in mediaSelectionGroup.options {
-                        if !savedOptions.contains(option) {
-                            // This option hasn't been downloaded. Return it so it can be.
-                            print("Available Media:",mediaSelectionGroup,option.displayName )
-                            return (mediaSelectionGroup, option)
+        mediaSelectionOption: AVMediaSelectionOption?) {
+            
+            // If the specified asset has not associated asset cache, return nil tuple
+            guard let assetCache = asset.assetCache else {
+                return (nil, nil)
+            }
+            
+            // Iterate through audible and legible characteristics to find associated groups for asset
+            for characteristic in [AVMediaCharacteristic.audible, AVMediaCharacteristic.legible] {
+                
+                if let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: characteristic) {
+                    
+                    // Determine which offline media selection options exist for this asset
+                    let savedOptions = assetCache.mediaSelectionOptions(in: mediaSelectionGroup)
+                    
+                    // If there are still media options to download...
+                    if savedOptions.count < mediaSelectionGroup.options.count {
+                        for option in mediaSelectionGroup.options {
+                           
+                            if !savedOptions.contains(option) {
+                                // This option hasn't been downloaded. Return it so it can be.
+                                print("Available Media:",mediaSelectionGroup,option.displayName,option.availableMetadataFormats )
+                                
+                                return (mediaSelectionGroup, option)
+                            }
                         }
                     }
                 }
             }
-        }
-        // At this point all media options have been downloaded.
-        return (nil, nil)
+            // At this point all media options have been downloaded.
+            return (nil, nil)
     }
+    
+    
+    
+    private func findSubtitle(_ asset: AVURLAsset){
+
+        if let group = asset.mediaSelectionGroup(forMediaCharacteristic: AVMediaCharacteristic.legible) {
+
+            let locale = Locale(identifier: "en")
+            let options = AVMediaSelectionGroup.mediaSelectionOptions(from: group.options, with: locale)
+            
+          
+            print("Subtitle Selected:  \(options.first?.displayName ?? "No Subtitle Selected") ")
+            
+            for option in group.options {
+                print("Subtitle Selected:  \(option.displayName) ")
+            }
+            
+        
+        }
+    }
+    
     //HLS Downloader
+    
     
     private func setupHlsDownload(){
         
@@ -207,12 +256,12 @@ extension ViewController {
             return
         }
         
-       hlsDownloadSession = AVAssetDownloadURLSession(configuration: configuration,
-        assetDownloadDelegate: self,
-        delegateQueue: OperationQueue.main)
+        hlsDownloadSession = AVAssetDownloadURLSession(configuration: configuration,
+                                                       assetDownloadDelegate: self,
+                                                       delegateQueue: OperationQueue.main)
         
-    //https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8
-        guard let url = URL(string: "https://bitmovin-a.akamaihd.net/content/playhouse-vr/m3u8s/105560.m3u8")else{
+        //https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8
+        guard let url = URL(string: "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8")else{
             return
         }
         
@@ -226,12 +275,19 @@ extension ViewController {
             return
         }
         
+        if #available(iOS 10.0, *) {
+            nextMediaSelection(asset)
+            findSubtitle(asset)
+        } else {
+            // Fallback on earlier versions
+        }
+        
         // Create new AVAssetDownloadTask for the desired asset
         if #available(iOS 10.0, *) {
             if let downloadTask = hlsDownloadSession.makeAssetDownloadTask(asset: asset,
-                                                                        assetTitle: "samplevid",
-                                                                        assetArtworkData: nil,
-                                                                        options: [AVAssetDownloadTaskMinimumRequiredMediaBitrateKey: 2000000]){
+                                                                           assetTitle: "samplevid",
+                                                                           assetArtworkData: nil,
+                                                                           options: [AVAssetDownloadTaskMinimumRequiredMediaBitrateKey: 2000000]){
                 downloadTask.resume()
                 
                 currAsset = downloadTask.urlAsset
@@ -242,23 +298,23 @@ extension ViewController {
             // Fallback on earlier versions
             print("HLS Download feature not available")
         }
-       
+        
         
     }
     
     private func restorePendingDownloads() {
         // Create session configuration with ORIGINAL download identifier
         configuration = URLSessionConfiguration.background(withIdentifier: "VtnHlsDownlaoder")
-     
+        
         guard let configuration = configuration else{
             return
         }
         
         // Create a new AVAssetDownloadURLSession
         hlsDownloadSession = AVAssetDownloadURLSession(configuration: configuration,
-                                                    assetDownloadDelegate: self,
-                                                    delegateQueue: OperationQueue.main)
-     
+                                                       assetDownloadDelegate: self,
+                                                       delegateQueue: OperationQueue.main)
+        
         // Grab all the pending tasks associated with the downloadSession
         hlsDownloadSession?.getAllTasks { tasksArray in
             // For each task, restore the state in the app
@@ -280,7 +336,7 @@ extension ViewController {
         let assetURL = baseURL.appendingPathComponent(assetPath)
         
         print("Asset Path:", assetURL)
-//        let assetURL = URL(fileURLWithPath: assetPath)
+        //        let assetURL = URL(fileURLWithPath: assetPath)
         
         let asset = AVURLAsset(url: assetURL)
         
@@ -289,21 +345,21 @@ extension ViewController {
             if let cache = asset.assetCache, cache.isPlayableOffline {
                 // Set up player item and player and begin playback
                 
-//                let playerItem = AVPlayerItem(asset: asset)
-//                setUpPlayer(playerItem)
+                //                let playerItem = AVPlayerItem(asset: asset)
+                //                setUpPlayer(playerItem)
                 currAsset = mAVAssetDownloadTask.urlAsset
-//                let avAssest = AVAsset(url: assetURL)
+                //                let avAssest = AVAsset(url: assetURL)
                 let avAssest  = mAVAssetDownloadTask.urlAsset
                 let playerItem = AVPlayerItem(asset: avAssest)
                 let player = AVPlayer(playerItem: playerItem)  // video path coming from above function
-
-                    let playerViewController = AVPlayerViewController()
-                    playerViewController.player = player
-                    self.present(playerViewController, animated: true, completion: {
-                        player.play()
-                    })
-//                createVtnPlayer(asset)
-             
+                
+                let playerViewController = AVPlayerViewController()
+                playerViewController.player = player
+                self.present(playerViewController, animated: true, completion: {
+                    player.play()
+                })
+                //                createVtnPlayer(asset)
+                
             } else {
                 // Present Error: No playable version of this asset exists offline
                 print("No playable version of this asset exists offline")
@@ -316,15 +372,15 @@ extension ViewController {
     
     private func setUpPlayer(_ mAVPlayerItem:AVPlayerItem){
         
-         mAVPlayerItem.addObserver(self,forKeyPath: #keyPath(AVPlayerItem.status),options: [.old, .new],context: &playerItemContext)
+        mAVPlayerItem.addObserver(self,forKeyPath: #keyPath(AVPlayerItem.status),options: [.old, .new],context: &playerItemContext)
         
         if let mPlayer = mPlayer{
             self.mPlayer?.replaceCurrentItem(with: mAVPlayerItem)
         }else{
-             self.mPlayer = AVPlayer(playerItem: mAVPlayerItem)
+            self.mPlayer = AVPlayer(playerItem: mAVPlayerItem)
         }
-       
-       
+        
+        
         let playerViewController = AVPlayerViewController()
         playerViewController.player = mPlayer
         self.present(playerViewController, animated: true, completion: {
@@ -332,57 +388,57 @@ extension ViewController {
         })
         
         /*
+         
+         let layer: AVPlayerLayer = AVPlayerLayer(player: self.mPlayer)
+         layer.frame = self.mPlayerView.bounds
+         layer.videoGravity = AVLayerVideoGravity.resizeAspectFill
+         self.mPlayerView.layer.addSublayer(layer)*/
         
-        let layer: AVPlayerLayer = AVPlayerLayer(player: self.mPlayer)
-        layer.frame = self.mPlayerView.bounds
-        layer.videoGravity = AVLayerVideoGravity.resizeAspectFill
-        self.mPlayerView.layer.addSublayer(layer)*/
-       
         
         
-       print("PATH: ", getVideoUrl() as Any)
-                   
-                
+        print("PATH: ", getVideoUrl() as Any)
+        
+        
     }
     
     func createVtnPlayer(_ asset:AVAsset){
-       
+        
         let keys: [String] = ["playable"]
         
-            asset.loadValuesAsynchronously(forKeys: keys, completionHandler: {
-                var error: NSError? = nil
-                let status = asset.statusOfValue(forKey: "playable", error: &error)
-                switch status {
-                case .loaded:
-                    DispatchQueue.main.async {
-                        let mAVPlayerItem = AVPlayerItem(asset: asset)
-                        self.setUpPlayer(mAVPlayerItem)
-                    }
-                    break
-                case .failed:
-                    DispatchQueue.main.async {
-                        //do something, show alert, put a placeholder image etc.
-                       print("Asset error")
-                    }
-                    break
-                case .cancelled:
-                    DispatchQueue.main.async {
-                        //do something, show alert, put a placeholder image etc.
-                    }
-                    break
-                default:
-                    break
+        asset.loadValuesAsynchronously(forKeys: keys, completionHandler: {
+            var error: NSError? = nil
+            let status = asset.statusOfValue(forKey: "playable", error: &error)
+            switch status {
+            case .loaded:
+                DispatchQueue.main.async {
+                    let mAVPlayerItem = AVPlayerItem(asset: asset)
+                    self.setUpPlayer(mAVPlayerItem)
                 }
-            })
+                break
+            case .failed:
+                DispatchQueue.main.async {
+                    //do something, show alert, put a placeholder image etc.
+                    print("Asset error")
+                }
+                break
+            case .cancelled:
+                DispatchQueue.main.async {
+                    //do something, show alert, put a placeholder image etc.
+                }
+                break
+            default:
+                break
+            }
+        })
         
-       
+        
     }
     
     private func listDirectory(_ documentsURL: URL){
         
         let fileManager = FileManager.default
         let documentsURL = fileManager.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-       
+        
         do {
             let fileURLs = try fileManager.contentsOfDirectory(at: documentsURL, includingPropertiesForKeys: nil)
             // process files
@@ -393,9 +449,9 @@ extension ViewController {
         
         
     }
-
     
-   
+    
+    
     
 }
 
@@ -423,7 +479,7 @@ extension ViewController : AVAssetDownloadDelegate{
         UserDefaults.standard.set(location.relativePath, forKey: "assetPath")
         print("Download Complete",location)
         playOfflineAsset(assetDownloadTask,location)
-//        listDirectory(location)
+        //        listDirectory(location)
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -432,13 +488,8 @@ extension ViewController : AVAssetDownloadDelegate{
     
     
     func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, didResolve resolvedMediaSelection: AVMediaSelection) {
-        print("Download Media", resolvedMediaSelection)
+        print("Available Media", resolvedMediaSelection)
     }
-    
-    
-    
-    
-    
     
     
 }
@@ -457,7 +508,7 @@ extension ViewController : URLSessionDownloadDelegate{
         
         let percentDownloaded:Float =  (bytesWritten / bytesExpectedToWrite)*100
         let percent = Int(percentDownloaded)
-
+        
         DispatchQueue.main.async {
             self.percentageLabel.text = "\(percent)%"
             print("Percentage :\(percent)")
@@ -466,19 +517,19 @@ extension ViewController : URLSessionDownloadDelegate{
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         print("location \(location)")
-     
+        
         guard let destinationURL = destinationURL else {
             print("destinationURL not found")
             return
         }
-       
+        
         
         do {
             try FileManager.default.moveItem(at: location, to: destinationURL)
             print("DownloadedURl: \(destinationURL)")
             dwUrl = destinationURL
             DispatchQueue.main.async {
-               // Update UI after background thread
+                // Update UI after background thread
                 self.playVideo(destinationURL)
             }
             
@@ -514,7 +565,7 @@ extension ViewController {
             switch status {
             case .readyToPlay:
                 print("Ready")
-                 self.mPlayer?.play()
+                self.mPlayer?.play()
                 break;
             case .failed:
                 print(mPlayer?.currentItem?.error?.localizedDescription ?? "Reason Unknown")
@@ -539,7 +590,7 @@ extension ViewController {
     
     func downloadVideoLink(_ urlString:String){
         if let url = URL(string: urlString){
-
+            
             guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
             
             
@@ -559,8 +610,8 @@ extension ViewController {
         }
     }
     
-   
-
+    
+    
     
 }
 
