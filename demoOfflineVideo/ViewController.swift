@@ -24,6 +24,8 @@ class ViewController: UIViewController{
     
     private var currAsset:AVAsset?
     
+    private var mediaSelectionMap = [AVAssetDownloadTask : AVMediaSelection]()
+    
     private lazy var urlSession: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: "MySession")
         //        config.isDiscretionary = true
@@ -43,11 +45,11 @@ class ViewController: UIViewController{
         super.viewDidLoad()
         //        downloadVideoLink("http://techslides.com/demos/sample-videos/small.mp4")
         let item = AVPlayerItem(url: URL(string: "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8")!)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            //            self.setUpPlayer(item)
-        }
+//        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+//                        self.setUpPlayer(item)
+//        }
         
-        
+        print("viewDidLoad")
         //        setupHlsDownload()
     }
     
@@ -66,14 +68,22 @@ class ViewController: UIViewController{
         let assetURL = baseURL.appendingPathComponent(assetPath)
         let asset = AVURLAsset(url: assetURL)
         
+        
+        
+        
+        
         if let cache = asset.assetCache, cache.isPlayableOffline {
-            
             // Set up player item and player and begin playback
-            createVtnPlayer(asset)
+            print("playable asset")
+            findSubtitle(asset)
         }
+         
+       createVtnPlayer(asset)
+        
+       
         
         //        nextMediaSelection(asset)
-        listDirectory(assetURL)
+//        listDirectory(assetURL)
         
         
     }
@@ -91,7 +101,14 @@ class ViewController: UIViewController{
         if let assetPath = userDefaults.value(forKey: "assetPath") as? String{
             let baseURL = URL(fileURLWithPath: NSHomeDirectory())
             let assetURL = baseURL.appendingPathComponent(assetPath)
-            try? FileManager.default.removeItem(at: assetURL)
+            do {
+                try FileManager.default.removeItem(at: assetURL)
+                percentageLabel?.text = "Deleted"
+            } catch let error as NSError {
+                print("Error: \(error.domain)")
+                percentageLabel?.text = "Delete Failed: \(error.domain)"
+            }
+            
             userDefaults.removeObject(forKey: "assetPath")
         }
         
@@ -226,27 +243,36 @@ extension ViewController {
     
     
     
-    private func findSubtitle(_ asset: AVURLAsset){
+    private func findSubtitle(_ asset: AVURLAsset) -> (mediaSelectionGroup: AVMediaSelectionGroup?,
+    mediaSelectionOption: AVMediaSelectionOption?){
 
-        if let group = asset.mediaSelectionGroup(forMediaCharacteristic: AVMediaCharacteristic.legible) {
+        if let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: AVMediaCharacteristic.legible) {
 
             let locale = Locale(identifier: "en")
-            let options = AVMediaSelectionGroup.mediaSelectionOptions(from: group.options, with: locale)
+            let options = AVMediaSelectionGroup.mediaSelectionOptions(from: mediaSelectionGroup.options, with: locale)
             
           
             print("Subtitle Selected:  \(options.first?.displayName ?? "No Subtitle Selected") ")
             
-            for option in group.options {
+            for option in mediaSelectionGroup.options {
                 print("Subtitle Selected:  \(option.displayName) ")
+                
+//                if(option.displayName == "English"){
+//                    return (mediaSelectionGroup, option)
+//                }
+                 
             }
-            
+            return (mediaSelectionGroup, options.first)
         
         }
+        
+        return (nil, nil)
     }
     
     //HLS Downloader
     
     
+    @available(iOS 10.0, *)
     private func setupHlsDownload(){
         
         configuration = URLSessionConfiguration.background(withIdentifier: "VtnHlsDownlaoder")
@@ -274,32 +300,17 @@ extension ViewController {
         guard let hlsDownloadSession = hlsDownloadSession else{
             return
         }
-        
-        if #available(iOS 10.0, *) {
-            nextMediaSelection(asset)
-            findSubtitle(asset)
-        } else {
-            // Fallback on earlier versions
-        }
-        
+      
         // Create new AVAssetDownloadTask for the desired asset
-        if #available(iOS 10.0, *) {
-            if let downloadTask = hlsDownloadSession.makeAssetDownloadTask(asset: asset,
-                                                                           assetTitle: "samplevid",
-                                                                           assetArtworkData: nil,
-                                                                           options: [AVAssetDownloadTaskMinimumRequiredMediaBitrateKey: 2000000]){
-                downloadTask.resume()
-                
-                currAsset = downloadTask.urlAsset
-                
-            }
+        if let downloadTask = hlsDownloadSession.makeAssetDownloadTask(asset: asset,
+                                                                       assetTitle: "samplevid",
+                                                                       assetArtworkData: nil,
+                                                                       options: [AVAssetDownloadTaskMinimumRequiredMediaBitrateKey: 200000]){
+            downloadTask.resume()
             
-        } else {
-            // Fallback on earlier versions
-            print("HLS Download feature not available")
+            currAsset = downloadTask.urlAsset
         }
-        
-        
+            
     }
     
     private func restorePendingDownloads() {
@@ -401,7 +412,7 @@ extension ViewController {
         
     }
     
-    func createVtnPlayer(_ asset:AVAsset){
+    func createVtnPlayer(_ asset:AVURLAsset){
         
         let keys: [String] = ["playable"]
         
@@ -472,6 +483,8 @@ extension ViewController : AVAssetDownloadDelegate{
         // Update UI state: post notification, update KVO state, invoke callback, etc.
         
         print("Download Percentage: ", percentComplete)
+        self.percentageLabel.text = "\(percentComplete)%"
+        
     }
     
     func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, didFinishDownloadingTo location: URL) {
@@ -479,16 +492,64 @@ extension ViewController : AVAssetDownloadDelegate{
         UserDefaults.standard.set(location.relativePath, forKey: "assetPath")
         print("Download Complete",location)
         playOfflineAsset(assetDownloadTask,location)
+        
+        
         //        listDirectory(location)
     }
     
+    
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         print("Download Error", error.debugDescription)
+        
+      
+    // Determine the next available AVMediaSelectionOption to download
+        if #available(iOS 10.0, *) {
+            
+            guard error == nil else { return }
+            guard let task = task as? AVAssetDownloadTask else { return }
+            
+            let mediaSelectionPair = nextMediaSelection(task.urlAsset)
+            
+            // If an undownloaded media selection option exists in the group...
+            if let group = mediaSelectionPair.mediaSelectionGroup,
+                let option = mediaSelectionPair.mediaSelectionOption {
+                
+                // Exit early if no corresponding AVMediaSelection exists for the current task
+                guard let originalMediaSelection = mediaSelectionMap[task] else { return }
+                
+                // Create a mutable copy and select the media selection option in the media selection group
+                let mediaSelection = originalMediaSelection.mutableCopy() as! AVMutableMediaSelection
+                mediaSelection.select(option, in: group)
+                
+                
+                
+                // Create a new download task with this media selection in its options
+                let options = [AVAssetDownloadTaskMediaSelectionKey: mediaSelection]
+                 let task = hlsDownloadSession?.makeAssetDownloadTask(asset: task.urlAsset,
+                                                                 assetTitle: "samplevid",
+                                                                 assetArtworkData: nil,
+                                                                 options: options)
+                    // Start media selection download
+                task?.resume()
+                
+                
+               
+                
+            } else {
+                // All media selection downloads complete
+            }
+            
+        }
+           
+        
+
     }
     
     
     func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, didResolve resolvedMediaSelection: AVMediaSelection) {
         print("Available Media", resolvedMediaSelection)
+        mediaSelectionMap[assetDownloadTask] = resolvedMediaSelection
+       
     }
     
     
@@ -610,6 +671,39 @@ extension ViewController {
         }
     }
     
+    
+    @available(iOS 10.0, *)
+    private func configureSubtitleDownload(_ task:AVAssetDownloadTask) {
+
+        let mediaSelectionPair = findSubtitle(task.urlAsset)
+        
+        if let group = mediaSelectionPair.mediaSelectionGroup,
+            let option = mediaSelectionPair.mediaSelectionOption {
+        
+               // Exit early if no corresponding AVMediaSelection exists for the current task
+               guard let originalMediaSelection = mediaSelectionMap[task] else { return }
+            guard let hlsDownloadSession = hlsDownloadSession else{
+                       return
+                   }
+        
+               // Create a mutable copy and select the media selection option in the media selection group
+               let mediaSelection = originalMediaSelection.mutableCopy() as! AVMutableMediaSelection
+            mediaSelection.select(option, in: group)
+            
+        
+               // Create a new download task with this media selection in its options
+            let options = [AVAssetDownloadTaskMediaSelectionKey: mediaSelection]
+            let task = hlsDownloadSession.makeAssetDownloadTask(asset: task.urlAsset,
+                                                                    assetTitle: "sample",
+                                                                    assetArtworkData: nil,
+                                                                    options: options)
+            
+                   // Start media selection download
+                   task?.resume()
+        }
+        
+        
+    }
     
     
     
