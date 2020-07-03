@@ -26,6 +26,7 @@ class ViewController: UIViewController{
     
     private var mediaSelectionMap = [AVAssetDownloadTask : AVMediaSelection]()
     
+    
     private lazy var urlSession: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: "MySession")
         //        config.isDiscretionary = true
@@ -40,17 +41,28 @@ class ViewController: UIViewController{
     private var configuration:URLSessionConfiguration?
     //End of HLS Vars
     
+    var subPath:URL?
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        //        downloadVideoLink("http://techslides.com/demos/sample-videos/small.mp4")
-        let item = AVPlayerItem(url: URL(string: "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8")!)
-//        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-//                        self.setUpPlayer(item)
-//        }
+        // downloadVideoLink("http://techslides.com/demos/sample-videos/small.mp4")
+        //https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8
         
+        let url =  URL(string: "http://staging.ventunotech.com/test/m3u8-test/sintel/playlist.m3u8")
+//        let item = AVPlayerItem(url: url!)
+
         print("viewDidLoad")
+        
+        let asset = AVURLAsset(url: url!)
+        printMediaOptions(asset)
+         asset.resourceLoader.setDelegate(self, queue: DispatchQueue(label: "resourceLoader"))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+//            self.createVtnPlayer(asset)
+        }
+        
         //        setupHlsDownload()
+        
+        downloadSubtitle()
     }
     
     @available(iOS 10.0, *)
@@ -68,16 +80,17 @@ class ViewController: UIViewController{
         let assetURL = baseURL.appendingPathComponent(assetPath)
         let asset = AVURLAsset(url: assetURL)
         
-        
+        asset.resourceLoader.setDelegate(self, queue: DispatchQueue(label: "resourceLoader"))
         
         
         
         if let cache = asset.assetCache, cache.isPlayableOffline {
             // Set up player item and player and begin playback
             print("playable asset")
-            findSubtitle(asset)
+//            findSubtitle(asset)
         }
-         
+        
+        
        createVtnPlayer(asset)
         
        
@@ -216,7 +229,7 @@ extension ViewController {
             }
             
             // Iterate through audible and legible characteristics to find associated groups for asset
-            for characteristic in [AVMediaCharacteristic.audible, AVMediaCharacteristic.legible] {
+            for characteristic in [AVMediaCharacteristic.legible] {
                 
                 if let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: characteristic) {
                     
@@ -226,13 +239,17 @@ extension ViewController {
                     // If there are still media options to download...
                     if savedOptions.count < mediaSelectionGroup.options.count {
                         for option in mediaSelectionGroup.options {
-                           
-                            if !savedOptions.contains(option) {
+                            
+                            if savedOptions.contains(option){
+                                 print("Options saved:", option.displayName )
+                            }
+                            if !savedOptions.contains(option) && option.displayName != "dubbing"{
                                 // This option hasn't been downloaded. Return it so it can be.
-                                print("Available Media:",mediaSelectionGroup,option.displayName,option.availableMetadataFormats )
-                                
+                                print("Options:", option.displayName )
                                 return (mediaSelectionGroup, option)
                             }
+                            
+                            
                         }
                     }
                 }
@@ -246,6 +263,7 @@ extension ViewController {
     private func findSubtitle(_ asset: AVURLAsset) -> (mediaSelectionGroup: AVMediaSelectionGroup?,
     mediaSelectionOption: AVMediaSelectionOption?){
 
+       
         if let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: AVMediaCharacteristic.legible) {
 
             let locale = Locale(identifier: "en")
@@ -257,9 +275,9 @@ extension ViewController {
             for option in mediaSelectionGroup.options {
                 print("Subtitle Selected:  \(option.displayName) ")
                 
-//                if(option.displayName == "English"){
-//                    return (mediaSelectionGroup, option)
-//                }
+                if(option.displayName == "English"){
+                    return (mediaSelectionGroup, option)
+                }
                  
             }
             return (mediaSelectionGroup, options.first)
@@ -287,7 +305,8 @@ extension ViewController {
                                                        delegateQueue: OperationQueue.main)
         
         //https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8
-        guard let url = URL(string: "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8")else{
+        //https://bitdash-a.akamaihd.net/content/sintel/hls/video/250kbit.m3u8
+        guard let url = URL(string: "http://staging.ventunotech.com/test/m3u8-test/sintel/playlist.m3u8")else{
             return
         }
         
@@ -306,6 +325,8 @@ extension ViewController {
                                                                        assetTitle: "samplevid",
                                                                        assetArtworkData: nil,
                                                                        options: [AVAssetDownloadTaskMinimumRequiredMediaBitrateKey: 200000]){
+            
+            downloadTask.priority = 1.0
             downloadTask.resume()
             
             currAsset = downloadTask.urlAsset
@@ -491,7 +512,7 @@ extension ViewController : AVAssetDownloadDelegate{
         // Do not move the asset from the download location
         UserDefaults.standard.set(location.relativePath, forKey: "assetPath")
         print("Download Complete",location)
-        playOfflineAsset(assetDownloadTask,location)
+//        playOfflineAsset(assetDownloadTask,location)
         
         
         //        listDirectory(location)
@@ -508,7 +529,8 @@ extension ViewController : AVAssetDownloadDelegate{
             guard error == nil else { return }
             guard let task = task as? AVAssetDownloadTask else { return }
             
-            let mediaSelectionPair = nextMediaSelection(task.urlAsset)
+            // Determine the next available AVMediaSelectionOption to download
+            let mediaSelectionPair = findSubtitle(task.urlAsset)
             
             // If an undownloaded media selection option exists in the group...
             if let group = mediaSelectionPair.mediaSelectionGroup,
@@ -521,25 +543,26 @@ extension ViewController : AVAssetDownloadDelegate{
                 let mediaSelection = originalMediaSelection.mutableCopy() as! AVMutableMediaSelection
                 mediaSelection.select(option, in: group)
                 
-                
-                
                 // Create a new download task with this media selection in its options
                 let options = [AVAssetDownloadTaskMediaSelectionKey: mediaSelection]
-                 let task = hlsDownloadSession?.makeAssetDownloadTask(asset: task.urlAsset,
+                let task = hlsDownloadSession?.makeAssetDownloadTask(asset: task.urlAsset,
                                                                  assetTitle: "samplevid",
                                                                  assetArtworkData: nil,
                                                                  options: options)
-                    // Start media selection download
-                task?.resume()
-                
+
+                // Start media selection download
+//                task?.resume()
                 
                
+               
                 
-            } else {
-                // All media selection downloads complete
-            }
-            
+           
+              } else {
+                  // All media selection downloads complete
+              }
         }
+            
+        
            
         
 
@@ -644,69 +667,89 @@ extension ViewController {
     
 }
 
+extension ViewController:AVAssetResourceLoaderDelegate{
+    func resourceLoader(_ resourceLoader: AVAssetResourceLoader,
+                        shouldWaitForLoadingOfRequestedResource
+        loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
+      
+        guard let scheme = loadingRequest.request.url?.scheme else {
+            return false
+        }
+        
+        
+        print("URL Scheme:",scheme)
+        if(scheme == "vtnsrthttps"){
+            
+            print("URL Scheme:",loadingRequest.request.url ?? "none")
+            if let location = UserDefaults.standard.url(forKey: "subpath"){
+                do{
+                    let data = try Data(contentsOf: location, options: .alwaysMapped)
+                    loadingRequest.contentInformationRequest?.contentType = "text/plain"
+                    loadingRequest.contentInformationRequest?.isByteRangeAccessSupported = true
+                    loadingRequest.contentInformationRequest?.contentLength = Int64(data.count)
+//                    loadingRequest.dataRequest?.respond(with: data)
+                    
+                    loadingRequest.finishLoading()
+                    
+                    print("path", location)
+                    print("Intercepted", data)
+//                    print("sub", String(decoding: data, as: UTF8.self))
+                    
+                }catch{
+                    print("Intercepting Error \(error.localizedDescription)")
+                }
+            }
+           
+        }
+        
+       
+        return false
+    }
+    
+    private func downloadSubtitle(){
+        
+        let url = URL(string: "https://bitdash-a.akamaihd.net/content/sintel/hls/subtitles_en.vtt")!
+        guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return
+        }
+       
+        let destinationURL = documentsURL.appendingPathComponent(url.lastPathComponent)
+        
+        URLSession.shared.downloadTask(with: url) { (location, response, error) -> Void in
+            self.subPath = location
+            do {
+                guard let location = location else {return}
+            
+                try FileManager.default.moveItem(at: location, to: destinationURL)
+                UserDefaults.standard.set(destinationURL, forKey: "subpath")
+                print("URL Scheme:",destinationURL)
+                
+            }catch{
+                print ("file error: \(error)")
+            }
+           
+        }.resume()
+    }
+}
 
 extension ViewController {
     
-    
-    
-    func downloadVideoLink(_ urlString:String){
-        if let url = URL(string: urlString){
-            
-            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-            
-            
-            destinationURL = documentsURL.appendingPathComponent(url.lastPathComponent)
-            
-            print("Path: ", destinationURL!.path)
-            
-            if !FileManager.default.fileExists(atPath: documentsURL.appendingPathComponent(url.lastPathComponent).path) {
-                print("New File Creation")
-                startDownload(url)
-            }else{
-                print("File exists")
-                print("Playing from local media")
-                if let destinationURL = destinationURL {playVideo(destinationURL)}
+  
+    private func printMediaOptions(_ asset:AVAsset) {
+        for characteristic in asset.availableMediaCharacteristicsWithMediaSelectionOptions {
+            print("\(characteristic)")
+           
+            // Retrieve the AVMediaSelectionGroup for the specified characteristic.
+            if let group = asset.mediaSelectionGroup(forMediaCharacteristic: characteristic) {
+                // Print its options.
+                for option in group.options {
+                    print("  Option: \(option.displayName)")
+                    
+                }
             }
-            
         }
     }
-    
-    
-    @available(iOS 10.0, *)
-    private func configureSubtitleDownload(_ task:AVAssetDownloadTask) {
-
-        let mediaSelectionPair = findSubtitle(task.urlAsset)
-        
-        if let group = mediaSelectionPair.mediaSelectionGroup,
-            let option = mediaSelectionPair.mediaSelectionOption {
-        
-               // Exit early if no corresponding AVMediaSelection exists for the current task
-               guard let originalMediaSelection = mediaSelectionMap[task] else { return }
-            guard let hlsDownloadSession = hlsDownloadSession else{
-                       return
-                   }
-        
-               // Create a mutable copy and select the media selection option in the media selection group
-               let mediaSelection = originalMediaSelection.mutableCopy() as! AVMutableMediaSelection
-            mediaSelection.select(option, in: group)
-            
-        
-               // Create a new download task with this media selection in its options
-            let options = [AVAssetDownloadTaskMediaSelectionKey: mediaSelection]
-            let task = hlsDownloadSession.makeAssetDownloadTask(asset: task.urlAsset,
-                                                                    assetTitle: "sample",
-                                                                    assetArtworkData: nil,
-                                                                    options: options)
-            
-                   // Start media selection download
-                   task?.resume()
-        }
-        
-        
-    }
-    
-    
-    
 }
+
 
 
