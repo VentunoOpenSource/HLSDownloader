@@ -16,7 +16,7 @@ class ViewController: UIViewController{
     var mPlayer:AVPlayer?
     @IBOutlet var percentageLabel: UILabel!
     var dwUrl:URL!
-    let urlString = "https://ventuno.contentbridge.tv/DUV19794V_Sobresali/DUV19794V_Sobresali_1280_720_2400.mp4"
+    
     var delegate:URLSessionDownloadDelegate?
     
     private var destinationURL:URL?
@@ -48,7 +48,7 @@ class ViewController: UIViewController{
         // downloadVideoLink("http://techslides.com/demos/sample-videos/small.mp4")
         //https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8
         
-        let url =  URL(string: "http://staging.ventunotech.com/test/m3u8-test/sintel/playlist.m3u8")
+        let url =  URL(string: "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8")
 //        let item = AVPlayerItem(url: url!)
 
         print("viewDidLoad")
@@ -305,8 +305,8 @@ extension ViewController {
                                                        delegateQueue: OperationQueue.main)
         
         //https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8
-        //https://bitdash-a.akamaihd.net/content/sintel/hls/video/250kbit.m3u8
-        guard let url = URL(string: "http://staging.ventunotech.com/test/m3u8-test/sintel/playlist.m3u8")else{
+       
+        guard let url = URL(string: "https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8")else{
             return
         }
         
